@@ -12,6 +12,7 @@ using TcpClient client = new();
 
 Console.WriteLine("서버 연결을 시도합니다.");
 
+// ConnectAsync : 비동기적으로 서버에 연결, 서버가 접속을 허용할 때까지 대기
 await client.ConnectAsync(serverIp, serverPort);
 
 Console.WriteLine("서버에 연결되었습니다.");
