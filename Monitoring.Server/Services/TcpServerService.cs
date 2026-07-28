@@ -9,16 +9,24 @@ namespace Monitoring.Server.Services;
 
 public class TcpServerService
 {
+    // ConcurrentDictionary를 사용하여 장비 ID와 연결 정보를 관리
+    // ConcurrentDictionary는 멀티스레드 환경에서 안전하게 데이터를 추가, 제거, 조회할 수 있는 컬렉션
+    // 이를 통해 여러 클라이언트가 동시에 접속하고 메시지를 주고받는 상황에서도 데이터의 일관성을 유지
     private readonly ConcurrentDictionary<string, ClientConnection> _clients = new();
 
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
 
+    // 이벤트를 통해 로그 메시지를 외부에 전달 (LogListBox에 로그를 표시하기 위해 사용)
     public event Action<string>? LogReceived;
+    // 이벤트를 통해 장비 등록 시 외부에 전달 (장비 등록 시 UI 업데이트를 위해 사용)
     public event Action<NetworkMessage>? DeviceRegistered;
+    // 이벤트를 통해 서버로부터 수신된 메시지를 외부에 전달 (UI 업데이트를 위해 사용)
     public event Action<NetworkMessage>? MessageReceived;
+    // 이벤트를 통해 장비 연결 해제 시 외부에 전달 (장비 연결 해제 시 UI 업데이트를 위해 사용)
     public event Action<string>? DeviceDisconnected;
 
+    // 서버를 시작하고 지정된 포트에서 클라이언트 연결을 수락하는 비동기 메서드
     public Task StartAsync(int port)
     {
         _cts = new CancellationTokenSource();
@@ -34,6 +42,7 @@ public class TcpServerService
         return Task.CompletedTask;
     }
 
+    // 클라이언트 연결을 수락하고 각 클라이언트에 대한 메시지 처리를 수행하는 비동기 루프 메서드
     private async Task AcceptLoopAsync(CancellationToken token)
     {
         if (_listener is null)
@@ -51,6 +60,7 @@ public class TcpServerService
                 LogReceived?.Invoke(
                     $"클라이언트 접속: {client.Client.RemoteEndPoint}");
 
+                // 각 클라이언트에 대한 메시지 처리를 비동기로 수행하도록 HandleClientAsync 메서드를 호출
                 _ = HandleClientAsync(client, token);
             }
         }
@@ -64,6 +74,7 @@ public class TcpServerService
         }
     }
 
+    // 클라이언트와의 통신을 처리하는 비동기 메서드
     private async Task HandleClientAsync(
         TcpClient client,
         CancellationToken token)
@@ -90,6 +101,7 @@ public class TcpServerService
                         break;
                     }
 
+                    // 수신한 JSON 문자열을 NetworkMessage 객체로 역직렬화
                     NetworkMessage? message =
                         JsonSerializer.Deserialize<NetworkMessage>(json);
 
@@ -161,6 +173,7 @@ public class TcpServerService
         }
     }
 
+    // 지정된 장비 ID로 메시지를 전송하는 비동기 메서드
     public async Task SendAsync(
         string deviceId,
         NetworkMessage message)
@@ -198,6 +211,7 @@ public class TcpServerService
         LogReceived?.Invoke("서버가 종료되었습니다.");
     }
 
+    // ClientConnection 클래스는 각 클라이언트와의 연결 정보를 관리하는 내부 클래스
     private class ClientConnection
     {
         public TcpClient Client { get; }
