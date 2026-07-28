@@ -2,6 +2,7 @@
 using System.IO;
 using System.Net.Sockets;
 using System.Text.Json;
+using System.Threading;
 
 namespace Monitoring.Client.Services;
 
@@ -15,6 +16,8 @@ public class TcpClientService
     private StreamWriter? _writer;
     // 연결 상태를 관리하고 비동기 작업을 취소할 수 있는 CancellationTokenSource 인스턴스
     private CancellationTokenSource? _cts;
+    // 서버로 데이터를 보내는 작업을 동기화하기 위한 SemaphoreSlim 인스턴스 (한 번에 하나의 쓰기 작업만 허용)
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
 
     // 이벤트를 통해 로그 메시지를 외부에 전달
     // LogListBox에 로그를 표시하기 위해 사용
@@ -165,21 +168,30 @@ public class TcpClientService
             // 프로그램 종료 시 정상적으로 발생할 수 있음
         }
     }
-
+    // 서버로 메시지를 전송하는 메서드, 동시에 여러 쓰기 작업이 발생하지 않도록 SemaphoreSlim을 사용하여 동기화
     public async Task SendAsync(NetworkMessage message)
     {
-        if (_writer is null)
+        await _sendLock.WaitAsync();
+
+        try
         {
-            LogReceived?.Invoke("서버에 연결되어 있지 않습니다.");
-            return;
+            if (_writer is null)
+            {
+                LogReceived?.Invoke("서버에 연결되어 있지 않습니다.");
+                return;
+            }
+
+            string json = JsonSerializer.Serialize(message);
+
+            await _writer.WriteLineAsync(json);
+
+            LogReceived?.Invoke(
+                $"TX SERVER {message.Type}");
         }
-
-        string json = JsonSerializer.Serialize(message);
-
-        await _writer.WriteLineAsync(json);
-
-        LogReceived?.Invoke(
-            $"TX SERVER {message.Type}");
+        finally
+        {
+            _sendLock.Release();
+        }
     }
 
     public void Disconnect()
