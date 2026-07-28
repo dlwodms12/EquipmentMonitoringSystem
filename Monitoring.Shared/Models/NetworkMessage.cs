@@ -26,4 +26,7 @@ public class NetworkMessage
     public double Voltage { get; set; }
 
     public int Battery { get; set; }
+
+    // 장비 선택을 위한 목록 속성 추가
+    public List<DeviceSummary> Devices { get; set; } = new();
 }

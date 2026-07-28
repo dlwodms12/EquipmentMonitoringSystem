@@ -9,9 +9,13 @@ namespace Monitoring.Shared.Models;
 //메세지 타입을 정의
 public enum MessageType
 {
-    Register, //처음 접속할 때 장비 정보를 서버에 넘기는 용도
+    // 처음 접속할 때 장비 정보를 서버에 넘기는 용도
+    Register, 
     PingRequest,
     PingResponse,
     SystemInfoRequest,
-    SystemInfoResponse
+    SystemInfoResponse,
+    // 장비 리스트 요청 및 응답 타입 추가
+    DeviceListRequest,
+    DeviceListResponse
 }

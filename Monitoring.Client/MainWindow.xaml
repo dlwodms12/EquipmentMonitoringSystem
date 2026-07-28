@@ -17,17 +17,46 @@
                    FontSize="20"
                    FontWeight="Bold"/>
 
-        <GroupBox Grid.Row="1" Header="장비 상태" Margin="0,20,0,10">
+        <GroupBox Grid.Row="1"
+          Header="장비 선택 및 상태"
+          Margin="0,20,0,10">
+
             <StackPanel Margin="15">
+
+                <!-- 서버에서 받은 장비 목록을 표시 -->
+                <StackPanel Orientation="Horizontal">
+                    <ComboBox x:Name="DeviceComboBox"
+                      Width="220"
+                      DisplayMemberPath="DisplayText"/>
+
+                    <Button x:Name="RegisterButton"
+                    Content="이 장비로 시작"
+                    Margin="10,0,0,0"
+                    Click="RegisterButton_Click"/>
+                </StackPanel>
+
+                <Separator Margin="0,15,0,15"/>
+
+                <!-- 선택 후 표시되는 장비 상태 -->
                 <TextBlock x:Name="DeviceNameText"
-                           Text="장비 이름: Device-001"
-                           FontSize="16"
-                           FontWeight="Bold"/>
-                <TextBlock x:Name="StatusText" Text="상태: 정상"/>
-                <TextBlock x:Name="TemperatureText" Text="온도: 32.4 °C"/>
-                <TextBlock x:Name="VoltageText" Text="전압: 24.1 V"/>
-                <TextBlock x:Name="BatteryText" Text="배터리: 84%"/>
-                <TextBlock Text="자동 통신 주기: 1분"/>
+                   Text="장비 이름: 선택되지 않음"
+                   FontSize="16"
+                   FontWeight="Bold"/>
+
+                <TextBlock x:Name="StatusText"
+                   Text="상태: -"/>
+
+                <TextBlock x:Name="TemperatureText"
+                   Text="온도: -"/>
+
+                <TextBlock x:Name="VoltageText"
+                   Text="전압: -"/>
+
+                <TextBlock x:Name="BatteryText"
+                   Text="배터리: -"/>
+
+                <TextBlock Text="자동 통신 주기: 1분"
+                   Margin="0,10,0,0"/>
             </StackPanel>
         </GroupBox>
 

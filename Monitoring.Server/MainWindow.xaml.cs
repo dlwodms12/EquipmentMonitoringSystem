@@ -7,21 +7,30 @@ namespace Monitoring.Server
 {
     public partial class MainWindow : Window
     {
-        // TcpServerService 클래스의 인스턴스를 생성하여 서버 기능을 제공. 이 클래스는 클라이언트 연결 수락, 메시지 수신 및 전송, 장비 등록 및 연결 해제 처리 등의 기능을 수행. MainWindow에서 서버와 관련된 이벤트를 처리하고 UI를 업데이트하는 데 사용됨
-        private readonly TcpServerService _serverService = new();
-        // Dictionary를 사용하여 장비 ID와 최신 시스템 정보를 관리. Dictionary는 키-값 쌍으로 데이터를 저장하며, 장비 ID를 키로 사용하여 최신 시스템 정보를 빠르게 조회 가능. 이를 통해 여러 장비의 상태를 효율적으로 관리하고 UI에 표시할 수 있음
+
+        // DeviceDatabaseService 클래스의 인스턴스를 생성하여 장비 데이터베이스와 관련된 기능을 제공.
+        // 이 클래스는 장비 등록, 조회, 삭제 등의 기능을 수행하며, MainWindow에서 장비 데이터베이스와 상호작용할 때 사용됨. 현재 코드에서는 사용되지 않지만, 향후 장비 데이터베이스 기능을 확장할 때 활용 가능
+        private readonly DeviceDatabaseService _deviceDatabase = new();
+
+        // TcpServerService 클래스의 인스턴스를 생성하여 서버 기능을 제공.
+        // 이 클래스는 클라이언트 연결 수락, 메시지 수신 및 전송, 장비 등록 및 연결 해제 처리 등의 기능을 수행. MainWindow에서 서버와 관련된 이벤트를 처리하고 UI를 업데이트하는 데 사용됨
+        private readonly TcpServerService _serverService;
+
+        // Dictionary를 사용하여 장비 ID와 최신 시스템 정보를 관리. Dictionary는 키-값 쌍으로 데이터를 저장하며, 장비 ID를 키로 사용하여 최신 시스템 정보를 빠르게 조회 가능
         private readonly Dictionary<string, NetworkMessage> _latestSystemInfo = new();
+
         // 선택된 장비 ID를 저장하는 변수. 사용자가 DeviceListBox에서 장비를 선택하면 해당 장비의 ID가 이 변수에 저장되어 이후 명령 전송 시 사용됨. 선택된 장비가 없으면 null이 될 수 있음
         private string? _selectedDeviceId;
+
         // HashSet을 사용하여 현재 연결된 장비 ID를 관리. HashSet은 중복된 값을 허용하지 않으며, 장비 연결 상태를 빠르게 확인할 수 있음. 장비가 연결되면 ID를 추가하고, 연결이 종료되면 ID를 제거하여 현재 연결 상태를 효율적으로 추적 가능
         private readonly HashSet<string> _connectedDeviceIds = new();
-        // DeviceDatabaseService 클래스의 인스턴스를 생성하여 장비 데이터베이스와 관련된 기능을 제공. 이 클래스는 장비 등록, 조회, 삭제 등의 기능을 수행하며, MainWindow에서 장비 데이터베이스와 상호작용할 때 사용됨. 현재 코드에서는 사용되지 않지만, 향후 장비 데이터베이스 기능을 확장할 때 활용 가능
-        private readonly DeviceDatabaseService _deviceDatabase = new();
+        
 
         public MainWindow()
         {
             InitializeComponent();
 
+            _serverService = new TcpServerService(_deviceDatabase.GetDeviceSummariesAsync);
             _serverService.LogReceived += ServerService_LogReceived;
             _serverService.DeviceRegistered += ServerService_DeviceRegistered;
             _serverService.MessageReceived += ServerService_MessageReceived;

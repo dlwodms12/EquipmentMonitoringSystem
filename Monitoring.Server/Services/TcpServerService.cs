@@ -16,6 +16,8 @@ public class TcpServerService
 
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
+    // Func<Task<List<DeviceSummary>>>를 통해 장비 목록을 비동기적으로 가져오는 메서드를 외부에서 주입받음
+    private readonly Func<Task<List<DeviceSummary>>> _getDevicesAsync;
 
     // 이벤트를 통해 로그 메시지를 외부에 전달 (LogListBox에 로그를 표시하기 위해 사용)
     public event Action<string>? LogReceived;
@@ -25,6 +27,13 @@ public class TcpServerService
     public event Action<NetworkMessage>? MessageReceived;
     // 이벤트를 통해 장비 연결 해제 시 외부에 전달 (장비 연결 해제 시 UI 업데이트를 위해 사용)
     public event Action<string>? DeviceDisconnected;
+
+    // TcpServerService 생성자에서 장비 목록을 가져오는 메서드를 주입받음
+    public TcpServerService(
+    Func<Task<List<DeviceSummary>>> getDevicesAsync)
+    {
+        _getDevicesAsync = getDevicesAsync;
+    }
 
     // 서버를 시작하고 지정된 포트에서 클라이언트 연결을 수락하는 비동기 메서드
     public Task StartAsync(int port)
@@ -107,6 +116,27 @@ public class TcpServerService
 
                     if (message is null)
                     {
+                        continue;
+                    }
+
+                    // 장비 목록 요청 메시지를 수신하면 장비 목록을 가져와 응답 메시지를 전송
+                    if (message.Type == MessageType.DeviceListRequest)
+                    {
+                        List<DeviceSummary> devices =
+                            await _getDevicesAsync();
+
+                        NetworkMessage response = new()
+                        {
+                            Type = MessageType.DeviceListResponse,
+                            Devices = devices,
+                            SentAt = DateTime.Now
+                        };
+
+                        await writer.WriteLineAsync(
+                            JsonSerializer.Serialize(response));
+
+                        LogReceived?.Invoke("TX DeviceListResponse");
+
                         continue;
                     }
 

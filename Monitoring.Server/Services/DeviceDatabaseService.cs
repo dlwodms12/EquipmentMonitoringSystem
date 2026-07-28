@@ -1,6 +1,7 @@
 ﻿using System.IO;
 using Microsoft.Data.Sqlite;
 using Monitoring.Server.Models;
+using Monitoring.Shared.Models;
 
 namespace Monitoring.Server.Services;
 
@@ -91,5 +92,39 @@ public class DeviceDatabaseService
                 ? null
                 : DateTime.Parse(reader.GetString(7))
         };
+    }
+
+    // 서버 DB에서 장비 목록을 가져오는 메서드, DeviceSummary 객체 리스트를 반환, 장비 ID와 이름만 포함
+    public async Task<List<DeviceSummary>> GetDeviceSummariesAsync()
+    {
+        List<DeviceSummary> devices = new();
+
+        await using SqliteConnection connection =
+            new(_connectionString);
+
+        await connection.OpenAsync();
+
+        await using SqliteCommand command =
+            connection.CreateCommand();
+
+        command.CommandText = """
+        SELECT DeviceId, DeviceName
+        FROM Devices
+        ORDER BY DeviceId;
+        """;
+
+        await using SqliteDataReader reader =
+            await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            devices.Add(new DeviceSummary
+            {
+                DeviceId = reader.GetString(0),
+                DeviceName = reader.GetString(1)
+            });
+        }
+
+        return devices;
     }
 }

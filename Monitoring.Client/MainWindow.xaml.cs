@@ -1,13 +1,4 @@
-﻿using System.Text;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
+﻿using System.Windows;
 using Monitoring.Client.Services;
 using Monitoring.Shared.Models;
 
@@ -21,8 +12,7 @@ namespace Monitoring.Client
         private const string ServerIp = "127.0.0.1";
         private const int ServerPort = 5000;
 
-        private const string DeviceId = "Device-001";
-        private const string DeviceName = "장비 1";
+        private DeviceSummary? _currentDevice;
 
         public MainWindow()
         {
@@ -37,15 +27,16 @@ namespace Monitoring.Client
         }
 
         // MainWindow_Loaded 이벤트 핸들러는 MainWindow가 로드될 때 호출되며, 장비 이름을 표시하고 서버에 연결을 시도
-        private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
+        private async void MainWindow_Loaded(object sender,RoutedEventArgs e)
         {
-            DeviceNameText.Text = $"장비 이름: {DeviceId}";
-
-            await _clientService.ConnectAsync(
+            bool connected = await _clientService.ConnectAsync(
                 ServerIp,
-                ServerPort,
-                DeviceId,
-                DeviceName);
+                ServerPort);
+
+            if (connected)
+            {
+                await _clientService.RequestDeviceListAsync();
+            }
         }
 
         // MainWindow_Closing 이벤트 핸들러는 MainWindow가 닫힐 때 호출되며, 서버와의 연결을 끊음
@@ -85,6 +76,22 @@ namespace Monitoring.Client
         // ClientService_MessageReceived 이벤트 핸들러는 서버로부터 메시지를 수신할 때 호출되며, PingRequest 메시지를 수신하면 PingResponse 메시지를 서버로 전송
         private async void ClientService_MessageReceived(NetworkMessage message)
         {
+            if (message.Type == MessageType.DeviceListResponse)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    DeviceComboBox.ItemsSource = message.Devices;
+                });
+
+                return;
+            }
+
+            // 장비를 선택·등록하기 전에는 Ping이나 상태 응답을 보낼 수 없다.
+            if (_currentDevice is null)
+            {
+                return;
+            }
+
             if (message.Type == MessageType.PingResponse)
             {
                 return;
@@ -95,8 +102,8 @@ namespace Monitoring.Client
                 NetworkMessage response = new()
                 {
                     Type = MessageType.PingResponse,
-                    DeviceId = DeviceId,
-                    DeviceName = DeviceName,
+                    DeviceId = _currentDevice.DeviceId,
+                    DeviceName = _currentDevice.DeviceName,
                     RequestId = message.RequestId,
                     SentAt = DateTime.Now
                 };
@@ -111,12 +118,11 @@ namespace Monitoring.Client
                 NetworkMessage response = new()
                 {
                     Type = MessageType.SystemInfoResponse,
-                    DeviceId = DeviceId,
-                    DeviceName = DeviceName,
+                    DeviceId = _currentDevice.DeviceId,
+                    DeviceName = _currentDevice.DeviceName,
                     RequestId = message.RequestId,
                     SentAt = DateTime.Now,
 
-                    // 현재는 장비 시뮬레이션 값
                     Status = "정상",
                     Temperature = 32.4,
                     Voltage = 24.1,
@@ -125,6 +131,28 @@ namespace Monitoring.Client
 
                 await _clientService.SendAsync(response);
             }
+        }
+
+        private async void RegisterButton_Click(object sender,RoutedEventArgs e)
+        {
+            if (DeviceComboBox.SelectedItem
+                is not DeviceSummary selectedDevice)
+            {
+                LogListBox.Items.Add("장비를 선택하세요.");
+                return;
+            }
+
+            _currentDevice = selectedDevice;
+
+            await _clientService.RegisterAsync(
+                _currentDevice.DeviceId,
+                _currentDevice.DeviceName);
+
+            DeviceNameText.Text =
+                $"장비 이름: {_currentDevice.DeviceId}";
+
+            DeviceComboBox.IsEnabled = false;
+            RegisterButton.IsEnabled = false;
         }
     }
 }
