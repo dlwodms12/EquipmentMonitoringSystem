@@ -11,18 +11,22 @@ public class TcpClientService
     private StreamReader? _reader;
     private StreamWriter? _writer;
     private CancellationTokenSource? _cts;
-    private Task? _pingTask;
 
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+
+    private Task? _receiveTask;
+    private Task? _pingTask;
+
+    private string? _deviceId;
+    private string? _deviceName;
 
     public event Action<string>? LogReceived;
     public event Action<NetworkMessage>? MessageReceived;
     public event Action<bool>? ConnectionChanged;
 
-    // ConnectAsync 메서드는 서버에 비동기적으로 연결을 시도하고, 연결 성공 여부를 반환
-    // 연결이 성공하면 NetworkStream을 생성하고 StreamReader와 StreamWriter를 초기화하며, 서버로부터 메시지를 수신하는 ReceiveLoopAsync 작업을 시작
-    // 연결 실패 시 예외를 처리하고 로그를 기록
-    public async Task<bool> ConnectAsync(string serverIp,int serverPort)
+    public async Task<bool> ConnectAsync(
+        string serverIp,
+        int serverPort)
     {
         _cts = new CancellationTokenSource();
 
@@ -48,8 +52,9 @@ public class TcpClientService
             ConnectionChanged?.Invoke(true);
             LogReceived?.Invoke("서버에 연결되었습니다.");
 
-            // 서버 메시지를 받는 작업은 연결 직후부터 시작
-            _ = ReceiveLoopAsync(_cts.Token);
+            // 장비 목록 응답을 받아야 하므로,
+            // Register보다 먼저 수신 반복을 시작한다.
+            _receiveTask = ReceiveLoopAsync(_cts.Token);
 
             return true;
         }
@@ -62,8 +67,7 @@ public class TcpClientService
         }
     }
 
-    // RequestDeviceListAsync 메서드는 서버에 장비 목록 요청 메시지를 전송하는 비동기 메서드
-    public Task RequestDeviceListAsync()
+    public async Task RequestDeviceListAsync()
     {
         NetworkMessage request = new()
         {
@@ -71,31 +75,40 @@ public class TcpClientService
             SentAt = DateTime.Now
         };
 
-        return SendAsync(request);
+        await SendAsync(request);
     }
 
-    // RegisterAsync 메서드는 서버에 장비 등록 메시지를 전송하고, Ping 작업을 시작하는 비동기 메서드
     public async Task RegisterAsync(
         string deviceId,
         string deviceName)
     {
+        if (_writer is null)
+        {
+            LogReceived?.Invoke(
+                "서버에 연결되어 있지 않아 등록할 수 없습니다.");
+
+            return;
+        }
+
+        // 선택한 장비 정보를 서비스 내부에 기억한다.
+        // 이후 Ping 요청을 만들 때 사용한다.
+        _deviceId = deviceId;
+        _deviceName = deviceName;
+
         NetworkMessage registerMessage = new()
         {
             Type = MessageType.Register,
-            DeviceId = deviceId,
-            DeviceName = deviceName,
+            DeviceId = _deviceId,
+            DeviceName = _deviceName,
             SentAt = DateTime.Now
         };
 
         await SendAsync(registerMessage);
 
-        // 이미 Ping 작업이 시작됐다면 다시 시작하지 않음
-        if (_pingTask is null && _cts is not null)
+        // Register 버튼을 여러 번 눌러도 Ping 반복 작업은 하나만 실행
+        if (_cts is not null && _pingTask is null)
         {
-            _pingTask = PingLoopAsync(
-                deviceId,
-                deviceName,
-                _cts.Token);
+            _pingTask = PingLoopAsync(_cts.Token);
         }
     }
 
@@ -114,7 +127,9 @@ public class TcpClientService
 
                 if (json is null)
                 {
-                    LogReceived?.Invoke("서버 연결이 종료되었습니다.");
+                    LogReceived?.Invoke(
+                        "서버 연결이 종료되었습니다.");
+
                     ConnectionChanged?.Invoke(false);
                     break;
                 }
@@ -130,26 +145,31 @@ public class TcpClientService
                 LogReceived?.Invoke(
                     $"RX SERVER {message.Type}");
 
-                // MainWindow에 메시지를 전달
                 MessageReceived?.Invoke(message);
             }
         }
         catch (OperationCanceledException)
         {
-            // 프로그램 종료 시 정상적으로 발생
+            // 창 종료 시 정상적으로 발생
         }
         catch (Exception ex)
         {
-            LogReceived?.Invoke($"수신 오류: {ex.Message}");
-            ConnectionChanged?.Invoke(false);
+            if (!token.IsCancellationRequested)
+            {
+                LogReceived?.Invoke($"수신 오류: {ex.Message}");
+                ConnectionChanged?.Invoke(false);
+            }
         }
     }
 
-    private async Task PingLoopAsync(
-        string deviceId,
-        string deviceName,
-        CancellationToken token)
+    private async Task PingLoopAsync(CancellationToken token)
     {
+        if (string.IsNullOrWhiteSpace(_deviceId) ||
+            string.IsNullOrWhiteSpace(_deviceName))
+        {
+            return;
+        }
+
         try
         {
             while (!token.IsCancellationRequested)
@@ -162,8 +182,8 @@ public class TcpClientService
                 NetworkMessage pingMessage = new()
                 {
                     Type = MessageType.PingRequest,
-                    DeviceId = deviceId,
-                    DeviceName = deviceName,
+                    DeviceId = _deviceId,
+                    DeviceName = _deviceName,
                     RequestId = Guid.NewGuid().ToString(),
                     SentAt = DateTime.Now
                 };
@@ -173,7 +193,7 @@ public class TcpClientService
         }
         catch (OperationCanceledException)
         {
-            // 프로그램 종료 시 정상적으로 발생
+            // 창 종료 시 정상적으로 발생
         }
     }
 
@@ -185,7 +205,9 @@ public class TcpClientService
         {
             if (_writer is null)
             {
-                LogReceived?.Invoke("서버에 연결되어 있지 않습니다.");
+                LogReceived?.Invoke(
+                    "서버에 연결되어 있지 않습니다.");
+
                 return;
             }
 
@@ -209,6 +231,10 @@ public class TcpClientService
         _writer?.Dispose();
         _reader?.Dispose();
         _client?.Dispose();
+
+        _writer = null;
+        _reader = null;
+        _client = null;
 
         ConnectionChanged?.Invoke(false);
     }

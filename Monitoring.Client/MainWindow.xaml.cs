@@ -29,11 +29,11 @@ namespace Monitoring.Client
         // MainWindow_Loaded 이벤트 핸들러는 MainWindow가 로드될 때 호출되며, 장비 이름을 표시하고 서버에 연결을 시도
         private async void MainWindow_Loaded(object sender,RoutedEventArgs e)
         {
-            bool connected = await _clientService.ConnectAsync(
+            bool isConnected = await _clientService.ConnectAsync(
                 ServerIp,
                 ServerPort);
 
-            if (connected)
+            if (isConnected)
             {
                 await _clientService.RequestDeviceListAsync();
             }
@@ -86,7 +86,7 @@ namespace Monitoring.Client
                 return;
             }
 
-            // 장비를 선택·등록하기 전에는 Ping이나 상태 응답을 보낼 수 없다.
+            // 장비를 선택하기 전에는 Ping, 상태 요청에 응답하지 않는다.
             if (_currentDevice is null)
             {
                 return;
@@ -138,7 +138,9 @@ namespace Monitoring.Client
             if (DeviceComboBox.SelectedItem
                 is not DeviceSummary selectedDevice)
             {
-                LogListBox.Items.Add("장비를 선택하세요.");
+                LogListBox.Items.Add(
+                    $"{DateTime.Now:HH:mm:ss} 장비를 선택하세요.");
+
                 return;
             }
 

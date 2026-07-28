@@ -88,6 +88,20 @@ namespace Monitoring.Server
                             Content = message.DeviceId
                         });
                 }
+
+                // 장비가 등록되면 DeviceListBox에서 해당 장비 ID를 찾아 글자색을 검은색으로 변경하여 연결 상태를 시각적으로 표시.
+                // 이미 존재하는 경우에도 글자색을 검은색으로 변경하여 연결 상태를 명확히 함
+                System.Windows.Controls.ListBoxItem? deviceItem =
+                DeviceListBox.Items
+                .OfType<System.Windows.Controls.ListBoxItem>()
+                .FirstOrDefault(x =>
+                x.Content?.ToString() == message.DeviceId);
+
+                if (deviceItem is not null)
+                {
+                    deviceItem.Foreground =
+                        System.Windows.Media.Brushes.Black;
+                }
             });
         }
 
@@ -138,13 +152,9 @@ namespace Monitoring.Server
             VoltageText.Text = $"전압: {device.Voltage:F1} V";
             BatteryText.Text = $"배터리: {device.Battery}%";
 
-            ConnectionText.Text = device.IsConnected
-                ? "통신: Connected"
-                : "통신: Disconnected";
-
-            ConnectionText.Foreground = device.IsConnected
-                ? System.Windows.Media.Brushes.Green
-                : System.Windows.Media.Brushes.Red;
+            // 현재 선택된 장비의 연결 상태를 HashSet에서 확인하여 ConnectionText를 업데이트.
+            // 연결되어 있으면 "통신: Connected"를 녹색으로 표시하고, 연결이 끊어져 있으면 "통신: Disconnected"를 빨간색으로 표시
+            DisplayConnectionState(_connectedDeviceIds.Contains(_selectedDeviceId));
         }
 
         //  ServerService_MessageReceived 이벤트 핸들러는 서버로부터 메시지를 수신할 때 호출되며, PingRequest 메시지를 수신하면 선택된 장비와 일치하는 경우 ConnectionText를 "통신: Connected"로 업데이트
@@ -157,7 +167,7 @@ namespace Monitoring.Server
                 {
                     if (_selectedDeviceId == message.DeviceId)
                     {
-                        ConnectionText.Text = "통신: Connected";
+                        DisplayConnectionState(true);
                     }
 
                     return;
@@ -197,7 +207,7 @@ namespace Monitoring.Server
 
                 if (_selectedDeviceId == deviceId)
                 {
-                    ConnectionText.Text = "통신: Disconnected";
+                    DisplayConnectionState(false);
                 }
 
                 LogListBox.Items.Add(
@@ -256,7 +266,19 @@ namespace Monitoring.Server
             TemperatureText.Text = $"온도: {message.Temperature:F1} °C";
             VoltageText.Text = $"전압: {message.Voltage:F1} V";
             BatteryText.Text = $"배터리: {message.Battery}%";
-            ConnectionText.Text = "통신: Connected";
+        }
+
+        // DisplayConnectionState 메서드는 선택된 장비의 연결 상태를 UI에 표시하며, 연결 상태에 따라 텍스트와 글자색을 업데이트.
+        // 연결되어 있으면 "통신: Connected"를 녹색으로 표시하고, 연결이 끊어져 있으면 "통신: Disconnected"를 빨간색으로 표시
+        private void DisplayConnectionState(bool isConnected)
+        {
+            ConnectionText.Text = isConnected
+                ? "통신: Connected"
+                : "통신: Disconnected";
+
+            ConnectionText.Foreground = isConnected
+                ? System.Windows.Media.Brushes.Green
+                : System.Windows.Media.Brushes.Red;
         }
     }
 }
