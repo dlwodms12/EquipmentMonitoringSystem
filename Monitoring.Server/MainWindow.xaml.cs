@@ -1,15 +1,7 @@
-﻿using System.Text;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
+﻿using System.Windows;
 using Monitoring.Server.Services;
 using Monitoring.Shared.Models;
+using Monitoring.Server.Models;
 
 namespace Monitoring.Server
 {
@@ -23,6 +15,8 @@ namespace Monitoring.Server
         private string? _selectedDeviceId;
         // HashSet을 사용하여 현재 연결된 장비 ID를 관리. HashSet은 중복된 값을 허용하지 않으며, 장비 연결 상태를 빠르게 확인할 수 있음. 장비가 연결되면 ID를 추가하고, 연결이 종료되면 ID를 제거하여 현재 연결 상태를 효율적으로 추적 가능
         private readonly HashSet<string> _connectedDeviceIds = new();
+        // DeviceDatabaseService 클래스의 인스턴스를 생성하여 장비 데이터베이스와 관련된 기능을 제공. 이 클래스는 장비 등록, 조회, 삭제 등의 기능을 수행하며, MainWindow에서 장비 데이터베이스와 상호작용할 때 사용됨. 현재 코드에서는 사용되지 않지만, 향후 장비 데이터베이스 기능을 확장할 때 활용 가능
+        private readonly DeviceDatabaseService _deviceDatabase = new();
 
         public MainWindow()
         {
@@ -37,9 +31,12 @@ namespace Monitoring.Server
             Closing += MainWindow_Closing;
         }
 
-        // MainWindow_Loaded 이벤트 핸들러는 MainWindow가 로드될 때 호출되며, 서버를 시작하고 지정된 포트에서 클라이언트 연결을 수락
+        // MainWindow_Loaded 이벤트 핸들러는 MainWindow가 로드될 때 호출되며, 장비 데이터베이스를 초기화하고 서버를 시작. 서버는 5000 포트에서 클라이언트 연결을 수락하도록 설정되어 있음.
+        // 이 메서드는 비동기적으로 실행되며, 장비 데이터베이스 초기화와 서버 시작이 완료될 때까지 기다림. 이를 통해 서버가 준비된 상태에서 클라이언트 연결을 처리할 수 있도록 보장
         private async void MainWindow_Loaded(object sender,RoutedEventArgs e)
         {
+            await _deviceDatabase.InitializeAsync();
+
             await _serverService.StartAsync(5000);
         }
 
@@ -85,10 +82,11 @@ namespace Monitoring.Server
             });
         }
 
-        // DeviceListBox_SelectionChanged 이벤트 핸들러는 DeviceListBox에서 선택된 장비가 변경될 때 호출되며, 선택된 장비 ID를 저장하고 SelectedDeviceText와 ConnectionText를 업데이트
-        private void DeviceListBox_SelectionChanged(object sender,System.Windows.Controls.SelectionChangedEventArgs e)
+        // DeviceListBox_SelectionChanged 이벤트 핸들러는 사용자가 DeviceListBox에서 장비를 선택할 때 호출되며, 선택된 장비의 정보를 SQLite DB에서 읽어와 화면에 표시.
+        // 선택된 장비가 없으면 아무 작업도 수행하지 않음. 또한 선택된 장비의 ID를 _selectedDeviceId에 저장하여 이후 명령 전송 시 사용 가능. 이 메서드는 비동기적으로 실행되며, DB 조회가 완료될 때까지 기다림
+        private async void DeviceListBox_SelectionChanged(object sender,System.Windows.Controls.SelectionChangedEventArgs e)
         {
-            // ListBox에서 선택된 항목을 가져온다.
+            // 사용자가 선택한 ListBox 항목을 가져온다.
             if (DeviceListBox.SelectedItem
                 is not System.Windows.Controls.ListBoxItem selectedItem)
             {
@@ -96,48 +94,48 @@ namespace Monitoring.Server
             }
 
             // ListBoxItem의 Content에는 Device-001 같은 장비 ID가 들어 있다.
-            string? deviceId = selectedItem.Content?.ToString();
+            string deviceId = selectedItem.Content?.ToString() ?? string.Empty;
 
-            // 선택된 장비 ID가 null이거나 공백이면 아무 작업도 하지 않는다.
             if (string.IsNullOrWhiteSpace(deviceId))
             {
                 return;
             }
 
-            // 현재 선택 장비로 기억한다.
+            // 현재 선택한 장비를 기억한다.
             _selectedDeviceId = deviceId;
 
-            // 화면 상단의 선택 장비 텍스트를 변경한다.
+            // 화면의 선택 장비 표시를 갱신한다.
             SelectedDeviceText.Text =
                 $"현재 선택된 장비: {_selectedDeviceId}";
 
-            // 연결 상태를 표시한다.
-            bool isConnected =
-                _connectedDeviceIds.Contains(_selectedDeviceId);
+            // SQLite DB에서 선택 장비의 정보를 읽어 온다.
+            DeviceRecord? device =
+                await _deviceDatabase.GetDeviceAsync(_selectedDeviceId);
 
-            ConnectionText.Text = isConnected
-                ? "통신: Connected"
-                : "통신: Disconnected";
-
-            ConnectionText.Foreground = isConnected
-                ? System.Windows.Media.Brushes.Green
-                : System.Windows.Media.Brushes.Red;
-
-            // 이전에 이 장비로부터 받은 시스템 정보가 있다면 표시한다.
-            if (_latestSystemInfo.TryGetValue(
-                _selectedDeviceId,
-                out NetworkMessage? systemInfo))
+            if (device is null)
             {
-                DisplaySystemInfo(systemInfo);
-            }
-            else
-            {
-                // 아직 Show System을 요청하지 않은 장비라면 빈 상태로 표시한다.
-                StatusText.Text = "상태: 정보 없음";
+                StatusText.Text = "상태: 장비 정보를 찾을 수 없음";
                 TemperatureText.Text = "온도: -";
                 VoltageText.Text = "전압: -";
                 BatteryText.Text = "배터리: -";
+                ConnectionText.Text = "통신: -";
+
+                return;
             }
+
+            // DB에서 읽은 정보를 서버 화면에 출력한다.
+            StatusText.Text = $"상태: {device.Status}";
+            TemperatureText.Text = $"온도: {device.Temperature:F1} °C";
+            VoltageText.Text = $"전압: {device.Voltage:F1} V";
+            BatteryText.Text = $"배터리: {device.Battery}%";
+
+            ConnectionText.Text = device.IsConnected
+                ? "통신: Connected"
+                : "통신: Disconnected";
+
+            ConnectionText.Foreground = device.IsConnected
+                ? System.Windows.Media.Brushes.Green
+                : System.Windows.Media.Brushes.Red;
         }
 
         //  ServerService_MessageReceived 이벤트 핸들러는 서버로부터 메시지를 수신할 때 호출되며, PingRequest 메시지를 수신하면 선택된 장비와 일치하는 경우 ConnectionText를 "통신: Connected"로 업데이트
