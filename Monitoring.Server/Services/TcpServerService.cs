@@ -4,6 +4,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
+using System.Linq;
 
 namespace Monitoring.Server.Services;
 
@@ -125,6 +126,9 @@ public class TcpServerService
                         List<DeviceSummary> devices =
                             await _getDevicesAsync();
 
+                        // 이미 등록된 장비는 제외하고 응답 메시지에 포함
+                        devices = devices.Where(device =>!_clients.ContainsKey(device.DeviceId)).ToList();
+
                         NetworkMessage response = new()
                         {
                             Type = MessageType.DeviceListResponse,
@@ -147,13 +151,46 @@ public class TcpServerService
 
                     if (message.Type == MessageType.Register)
                     {
-                        registeredDeviceId = message.DeviceId;
-
                         ClientConnection connection = new(
                             client,
                             writer);
 
-                        _clients[message.DeviceId] = connection;
+                        bool added = _clients.TryAdd(
+                            message.DeviceId,
+                            connection);
+
+                        if (!added)
+                        {
+                            NetworkMessage rejectedResponse = new()
+                            {
+                                Type = MessageType.RegisterRejected,
+                                DeviceId = message.DeviceId,
+                                DeviceName = message.DeviceName,
+                                Status = "이미 다른 클라이언트에서 사용 중인 장비입니다.",
+                                SentAt = DateTime.Now
+                            };
+
+                            await writer.WriteLineAsync(
+                                JsonSerializer.Serialize(rejectedResponse));
+
+                            LogReceived?.Invoke(
+                                $"Register 거절: {message.DeviceId}");
+
+                            continue;
+                        }
+
+                        registeredDeviceId = message.DeviceId;
+
+                        NetworkMessage acceptedResponse = new()
+                        {
+                            Type = MessageType.RegisterAccepted,
+                            DeviceId = message.DeviceId,
+                            DeviceName = message.DeviceName,
+                            SentAt = DateTime.Now
+                        };
+
+                        await writer.WriteLineAsync(
+                            JsonSerializer.Serialize(acceptedResponse));
 
                         DeviceRegistered?.Invoke(message);
 

@@ -85,6 +85,37 @@ namespace Monitoring.Client
 
                 return;
             }
+            // RegisterAccepted 메시지를 수신하면 장비 이름을 표시하고 LogListBox에 등록 완료 로그를 추가
+            if (message.Type == MessageType.RegisterAccepted)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    DeviceNameText.Text =
+                        $"장비 이름: {message.DeviceId}";
+
+                    LogListBox.Items.Add(
+                        $"{DateTime.Now:HH:mm:ss} {message.DeviceId} 등록 완료");
+                });
+
+                return;
+            }
+            // RegisterRejected 메시지를 수신하면 LogListBox에 등록 실패 로그를 추가하고, 장비 선택과 등록 버튼을 다시 활성화하며, _currentDevice를 null로 설정
+            if (message.Type == MessageType.RegisterRejected)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    LogListBox.Items.Add(
+                        $"{DateTime.Now:HH:mm:ss} 등록 실패: {message.Status}");
+
+                    // 다른 장비를 고를 수 있도록 다시 활성화
+                    DeviceComboBox.IsEnabled = true;
+                    RegisterButton.IsEnabled = true;
+                });
+
+                _currentDevice = null;
+
+                return;
+            }
 
             // 장비를 선택하기 전에는 Ping, 상태 요청에 응답하지 않는다.
             if (_currentDevice is null)
@@ -146,15 +177,13 @@ namespace Monitoring.Client
 
             _currentDevice = selectedDevice;
 
+            // 서버의 승인 또는 거절 응답을 기다리는 동안 중복 클릭 방지
+            DeviceComboBox.IsEnabled = false;
+            RegisterButton.IsEnabled = false;
+
             await _clientService.RegisterAsync(
                 _currentDevice.DeviceId,
                 _currentDevice.DeviceName);
-
-            DeviceNameText.Text =
-                $"장비 이름: {_currentDevice.DeviceId}";
-
-            DeviceComboBox.IsEnabled = false;
-            RegisterButton.IsEnabled = false;
         }
     }
 }

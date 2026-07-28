@@ -17,5 +17,8 @@ public enum MessageType
     SystemInfoResponse,
     // 장비 리스트 요청 및 응답 타입 추가
     DeviceListRequest,
-    DeviceListResponse
+    DeviceListResponse,
+    // 장비 등록 승인 및 거부 타입 추가
+    RegisterAccepted,
+    RegisterRejected
 }

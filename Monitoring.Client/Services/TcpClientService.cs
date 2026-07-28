@@ -20,6 +20,8 @@ public class TcpClientService
     private string? _deviceId;
     private string? _deviceName;
 
+    private bool _isRegistered;
+
     public event Action<string>? LogReceived;
     public event Action<NetworkMessage>? MessageReceived;
     public event Action<bool>? ConnectionChanged;
@@ -79,8 +81,8 @@ public class TcpClientService
     }
 
     public async Task RegisterAsync(
-        string deviceId,
-        string deviceName)
+    string deviceId,
+    string deviceName)
     {
         if (_writer is null)
         {
@@ -90,8 +92,12 @@ public class TcpClientService
             return;
         }
 
-        // 선택한 장비 정보를 서비스 내부에 기억한다.
-        // 이후 Ping 요청을 만들 때 사용한다.
+        if (_isRegistered)
+        {
+            LogReceived?.Invoke("이미 장비 등록이 완료되었습니다.");
+            return;
+        }
+
         _deviceId = deviceId;
         _deviceName = deviceName;
 
@@ -104,12 +110,6 @@ public class TcpClientService
         };
 
         await SendAsync(registerMessage);
-
-        // Register 버튼을 여러 번 눌러도 Ping 반복 작업은 하나만 실행
-        if (_cts is not null && _pingTask is null)
-        {
-            _pingTask = PingLoopAsync(_cts.Token);
-        }
     }
 
     private async Task ReceiveLoopAsync(CancellationToken token)
@@ -142,8 +142,26 @@ public class TcpClientService
                     continue;
                 }
 
-                LogReceived?.Invoke(
-                    $"RX SERVER {message.Type}");
+                LogReceived?.Invoke($"RX SERVER {message.Type}");
+
+                if (message.Type == MessageType.RegisterAccepted)
+                {
+                    _isRegistered = true;
+
+                    if (_cts is not null && _pingTask is null)
+                    {
+                        _pingTask = PingLoopAsync(_cts.Token);
+                    }
+                }
+
+                if (message.Type == MessageType.RegisterRejected)
+                {
+                    _deviceId = null;
+                    _deviceName = null;
+
+                    LogReceived?.Invoke(
+                        $"장비 등록 거절: {message.Status}");
+                }
 
                 MessageReceived?.Invoke(message);
             }
@@ -237,5 +255,9 @@ public class TcpClientService
         _client = null;
 
         ConnectionChanged?.Invoke(false);
+
+        _isRegistered = false;
+        _deviceId = null;
+        _deviceName = null;
     }
 }
