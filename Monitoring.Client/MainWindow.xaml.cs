@@ -102,6 +102,28 @@ namespace Monitoring.Client
                 };
 
                 await _clientService.SendAsync(response);
+
+                return;
+            }
+
+            if (message.Type == MessageType.SystemInfoRequest)
+            {
+                NetworkMessage response = new()
+                {
+                    Type = MessageType.SystemInfoResponse,
+                    DeviceId = DeviceId,
+                    DeviceName = DeviceName,
+                    RequestId = message.RequestId,
+                    SentAt = DateTime.Now,
+
+                    // 현재는 장비 시뮬레이션 값
+                    Status = "정상",
+                    Temperature = 32.4,
+                    Voltage = 24.1,
+                    Battery = 84
+                };
+
+                await _clientService.SendAsync(response);
             }
         }
     }
