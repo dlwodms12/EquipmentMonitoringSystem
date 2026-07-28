@@ -127,4 +127,114 @@ public class DeviceDatabaseService
 
         return devices;
     }
+    // 서버 DB에서 장비의 연결 상태를 업데이트하는 메서드, 장비 ID와 연결 상태를 매개변수로 받아 DB를 갱신
+    public async Task UpdateConnectionAsync(
+    string deviceId,
+    bool isConnected)
+    {
+        await using SqliteConnection connection =
+            new(_connectionString);
+
+        await connection.OpenAsync();
+
+        await using SqliteCommand command =
+            connection.CreateCommand();
+
+        if (isConnected)
+        {
+            command.CommandText = """
+            UPDATE Devices
+            SET IsConnected = 1,
+                LastSeen = $lastSeen
+            WHERE DeviceId = $deviceId;
+            """;
+
+            command.Parameters.AddWithValue(
+                "$lastSeen",
+                DateTime.UtcNow.ToString("O"));
+        }
+        else
+        {
+            command.CommandText = """
+            UPDATE Devices
+            SET IsConnected = 0
+            WHERE DeviceId = $deviceId;
+            """;
+        }
+
+        command.Parameters.AddWithValue(
+            "$deviceId",
+            deviceId);
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    // 서버 DB에서 장비의 상태 정보를 업데이트하는 메서드, NetworkMessage 객체를 매개변수로 받아 DB를 갱신
+    public async Task UpdateSystemInfoAsync(
+    NetworkMessage message)
+    {
+        await using SqliteConnection connection =
+            new(_connectionString);
+
+        await connection.OpenAsync();
+
+        await using SqliteCommand command =
+            connection.CreateCommand();
+
+        command.CommandText = """
+        UPDATE Devices
+        SET Status = $status,
+            Temperature = $temperature,
+            Voltage = $voltage,
+            Battery = $battery,
+            IsConnected = 1,
+            LastSeen = $lastSeen
+        WHERE DeviceId = $deviceId;
+        """;
+
+        command.Parameters.AddWithValue(
+            "$status",
+            message.Status);
+
+        command.Parameters.AddWithValue(
+            "$temperature",
+            message.Temperature);
+
+        command.Parameters.AddWithValue(
+            "$voltage",
+            message.Voltage);
+
+        command.Parameters.AddWithValue(
+            "$battery",
+            message.Battery);
+
+        command.Parameters.AddWithValue(
+            "$lastSeen",
+            DateTime.UtcNow.ToString("O"));
+
+        command.Parameters.AddWithValue(
+            "$deviceId",
+            message.DeviceId);
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    // 서버 DB에서 모든 장비의 연결 상태를 초기화하는 메서드, 서버 시작 시 호출되어 모든 장비를 연결되지 않은 상태로 설정
+    public async Task ResetConnectionStatesAsync()
+    {
+        await using SqliteConnection connection =
+            new(_connectionString);
+
+        await connection.OpenAsync();
+
+        await using SqliteCommand command =
+            connection.CreateCommand();
+
+        command.CommandText = """
+        UPDATE Devices
+        SET IsConnected = 0;
+        """;
+
+        await command.ExecuteNonQueryAsync();
+    }
 }

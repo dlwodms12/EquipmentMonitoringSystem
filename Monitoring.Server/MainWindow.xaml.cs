@@ -46,6 +46,8 @@ namespace Monitoring.Server
         {
             await _deviceDatabase.InitializeAsync();
 
+            await _deviceDatabase.ResetConnectionStatesAsync();
+
             await _serverService.StartAsync(5000);
         }
 
@@ -69,8 +71,13 @@ namespace Monitoring.Server
         }
 
         // ServerService_DeviceRegistered 이벤트 핸들러는 장비가 등록될 때 호출되며, DeviceListBox에 장비 ID를 추가. 이미 존재하는 경우 중복 추가 방지
-        private void ServerService_DeviceRegistered(NetworkMessage message)
+        private async void ServerService_DeviceRegistered(NetworkMessage message)
         {
+            // 장비가 등록되면 SQLite DB에서 해당 장비의 연결 상태를 true로 업데이트.
+            // 이를 통해 장비가 연결된 상태임을 데이터베이스에 반영.
+            // 이 메서드는 비동기적으로 실행되며, DB 업데이트가 완료될 때까지 기다림
+            await _deviceDatabase.UpdateConnectionAsync(message.DeviceId,true);
+
             Dispatcher.Invoke(() =>
             {
                 // 장비가 등록되면 연결된 장비 ID를 HashSet에 추가하여 현재 연결 상태를 업데이트
@@ -109,71 +116,70 @@ namespace Monitoring.Server
         // 선택된 장비가 없으면 아무 작업도 수행하지 않음. 또한 선택된 장비의 ID를 _selectedDeviceId에 저장하여 이후 명령 전송 시 사용 가능. 이 메서드는 비동기적으로 실행되며, DB 조회가 완료될 때까지 기다림
         private async void DeviceListBox_SelectionChanged(object sender,System.Windows.Controls.SelectionChangedEventArgs e)
         {
-            // 사용자가 선택한 ListBox 항목을 가져온다.
             if (DeviceListBox.SelectedItem
                 is not System.Windows.Controls.ListBoxItem selectedItem)
             {
                 return;
             }
 
-            // ListBoxItem의 Content에는 Device-001 같은 장비 ID가 들어 있다.
-            string deviceId = selectedItem.Content?.ToString() ?? string.Empty;
+            string? deviceId = selectedItem.Content?.ToString();
 
             if (string.IsNullOrWhiteSpace(deviceId))
             {
                 return;
             }
 
-            // 현재 선택한 장비를 기억한다.
             _selectedDeviceId = deviceId;
 
-            // 화면의 선택 장비 표시를 갱신한다.
             SelectedDeviceText.Text =
                 $"현재 선택된 장비: {_selectedDeviceId}";
 
-            // SQLite DB에서 선택 장비의 정보를 읽어 온다.
+            // SQLite DB에서 선택 장비의 마지막 저장 상태를 읽는다.
             DeviceRecord? device =
-                await _deviceDatabase.GetDeviceAsync(_selectedDeviceId);
+                await _deviceDatabase.GetDeviceAsync(deviceId);
 
             if (device is null)
             {
-                StatusText.Text = "상태: 장비 정보를 찾을 수 없음";
-                TemperatureText.Text = "온도: -";
-                VoltageText.Text = "전압: -";
-                BatteryText.Text = "배터리: -";
-                ConnectionText.Text = "통신: -";
-
+                StatusText.Text = "상태: 장비 정보를 찾을 수 없습니다.";
                 return;
             }
 
-            // DB에서 읽은 정보를 서버 화면에 출력한다.
-            StatusText.Text = $"상태: {device.Status}";
-            TemperatureText.Text = $"온도: {device.Temperature:F1} °C";
-            VoltageText.Text = $"전압: {device.Voltage:F1} V";
-            BatteryText.Text = $"배터리: {device.Battery}%";
+            // DB를 읽는 동안 다른 장비를 클릭했을 수 있으므로 확인
+            if (_selectedDeviceId != deviceId)
+            {
+                return;
+            }
 
-            // 현재 선택된 장비의 연결 상태를 HashSet에서 확인하여 ConnectionText를 업데이트.
-            // 연결되어 있으면 "통신: Connected"를 녹색으로 표시하고, 연결이 끊어져 있으면 "통신: Disconnected"를 빨간색으로 표시
-            DisplayConnectionState(_connectedDeviceIds.Contains(_selectedDeviceId));
+            DisplayDeviceRecord(device);
         }
 
         //  ServerService_MessageReceived 이벤트 핸들러는 서버로부터 메시지를 수신할 때 호출되며, PingRequest 메시지를 수신하면 선택된 장비와 일치하는 경우 ConnectionText를 "통신: Connected"로 업데이트
-        private void ServerService_MessageReceived(NetworkMessage message)
+        private async void ServerService_MessageReceived(
+    NetworkMessage message)
         {
-            Dispatcher.Invoke(() =>
+            if (message.Type == MessageType.PingRequest ||
+                message.Type == MessageType.PingResponse)
             {
-                if (message.Type == MessageType.PingRequest ||
-                    message.Type == MessageType.PingResponse)
+                Dispatcher.Invoke(() =>
                 {
                     if (_selectedDeviceId == message.DeviceId)
                     {
                         DisplayConnectionState(true);
                     }
+                });
 
-                    return;
-                }
+                return;
+            }
 
-                if (message.Type == MessageType.SystemInfoResponse)
+            if (message.Type == MessageType.SystemInfoResponse)
+            {
+                // SQLite DB에 수신한 시스템 정보를 업데이트. 이 메서드는 비동기적으로 실행되며, DB 업데이트가 완료될 때까지 기다림.
+                // 이를 통해 장비의 최신 시스템 정보를 데이터베이스에 반영
+                await _deviceDatabase.UpdateSystemInfoAsync(message);
+
+                // UI 스레드에서 최신 시스템 정보를 Dictionary에 저장하고, 선택된 장비와 일치하면 화면에 표시.
+                // Dispatcher.Invoke를 사용하여 UI 스레드에서 안전하게 UI 요소를 업데이트 가능.
+                Dispatcher.Invoke(() =>
                 {
                     _latestSystemInfo[message.DeviceId] = message;
 
@@ -181,13 +187,16 @@ namespace Monitoring.Server
                     {
                         DisplaySystemInfo(message);
                     }
-                }
-            });
+                });
+            }
         }
 
         // ServerService_DeviceDisconnected 이벤트 핸들러는 장비 연결이 종료될 때 호출되며, DeviceListBox에서 해당 장비 ID를 찾아 글자색을 빨간색으로 변경하고, 선택된 장비가 연결 종료된 경우 ConnectionText를 "통신: Disconnected"로 업데이트. 또한 로그에 연결 종료 메시지를 추가
-        private void ServerService_DeviceDisconnected(string deviceId)
+        private async void ServerService_DeviceDisconnected(string deviceId)
         {
+            // 장비 연결이 종료되면 SQLite DB에서 해당 장비의 연결 상태를 false로 업데이트.
+            await _deviceDatabase.UpdateConnectionAsync(deviceId,false);
+
             Dispatcher.Invoke(() =>
             {
                 // 연결 종료된 장비 ID를 HashSet에서 제거하여 현재 연결 상태를 업데이트
@@ -279,6 +288,22 @@ namespace Monitoring.Server
             ConnectionText.Foreground = isConnected
                 ? System.Windows.Media.Brushes.Green
                 : System.Windows.Media.Brushes.Red;
+        }
+
+        // DisplayDeviceRecord 메서드는 선택된 장비의 DeviceRecord 정보를 UI에 표시하며, 상태, 온도, 전압, 배터리 잔량, 통신 상태를 업데이트.
+        // 이 메서드는 DeviceRecord 객체를 매개변수로 받아 해당 장비의 정보를 화면에 출력.
+        // 연결 상태에 따라 텍스트와 글자색을 업데이트하여 사용자가 장비 상태를 쉽게 확인할 수 있도록 함
+        private void DisplayDeviceRecord(DeviceRecord device)
+        {
+            StatusText.Text = $"상태: {device.Status}";
+            TemperatureText.Text =
+                $"온도: {device.Temperature:F1} °C";
+            VoltageText.Text =
+                $"전압: {device.Voltage:F1} V";
+            BatteryText.Text =
+                $"배터리: {device.Battery}%";
+
+            DisplayConnectionState(device.IsConnected);
         }
     }
 }
