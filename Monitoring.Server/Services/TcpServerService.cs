@@ -151,13 +151,9 @@ public class TcpServerService
 
                     if (message.Type == MessageType.Register)
                     {
-                        ClientConnection connection = new(
-                            client,
-                            writer);
+                        ClientConnection connection = new(client,writer);
 
-                        bool added = _clients.TryAdd(
-                            message.DeviceId,
-                            connection);
+                        bool added = _clients.TryAdd(message.DeviceId,connection);
 
                         if (!added)
                         {

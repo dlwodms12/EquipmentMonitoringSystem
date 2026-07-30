@@ -170,8 +170,7 @@ public class DeviceDatabaseService
     }
 
     // 서버 DB에서 장비의 상태 정보를 업데이트하는 메서드, NetworkMessage 객체를 매개변수로 받아 DB를 갱신
-    public async Task UpdateSystemInfoAsync(
-    NetworkMessage message)
+    public async Task UpdateSystemInfoAsync(NetworkMessage message)
     {
         await using SqliteConnection connection =
             new(_connectionString);

@@ -154,8 +154,7 @@ namespace Monitoring.Server
         }
 
         //  ServerService_MessageReceived 이벤트 핸들러는 서버로부터 메시지를 수신할 때 호출되며, PingRequest 메시지를 수신하면 선택된 장비와 일치하는 경우 ConnectionText를 "통신: Connected"로 업데이트
-        private async void ServerService_MessageReceived(
-    NetworkMessage message)
+        private async void ServerService_MessageReceived(NetworkMessage message)
         {
             if (message.Type == MessageType.PingRequest ||
                 message.Type == MessageType.PingResponse)

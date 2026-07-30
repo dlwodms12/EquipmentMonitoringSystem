@@ -26,9 +26,7 @@ public class TcpClientService
     public event Action<NetworkMessage>? MessageReceived;
     public event Action<bool>? ConnectionChanged;
 
-    public async Task<bool> ConnectAsync(
-        string serverIp,
-        int serverPort)
+    public async Task<bool> ConnectAsync(string serverIp,int serverPort)
     {
         _cts = new CancellationTokenSource();
 
@@ -38,10 +36,7 @@ public class TcpClientService
 
             LogReceived?.Invoke("서버 연결을 시도합니다.");
 
-            await _client.ConnectAsync(
-                serverIp,
-                serverPort,
-                _cts.Token);
+            await _client.ConnectAsync(serverIp,serverPort,_cts.Token);
 
             NetworkStream stream = _client.GetStream();
 
@@ -80,9 +75,7 @@ public class TcpClientService
         await SendAsync(request);
     }
 
-    public async Task RegisterAsync(
-    string deviceId,
-    string deviceName)
+    public async Task RegisterAsync(string deviceId,string deviceName)
     {
         if (_writer is null)
         {
@@ -192,7 +185,6 @@ public class TcpClientService
         {
             while (!token.IsCancellationRequested)
             {
-                // 개발 중에는 5초, 완성 시에는 1분으로 변경
                 await Task.Delay(
                     TimeSpan.FromSeconds(5),
                     token);
